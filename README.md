@@ -94,13 +94,13 @@ All dependencies are fetched automatically via Zig's package manager:
 | brotli | [github.com/google/brotli](https://github.com/google/brotli) | MIT | Compression |
 | libjpeg-turbo | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | IJG/BSD/zlib | Headers only |
 
-### skcms (vendored)
+### skcms (vendored via git subtree)
 
-[skcms](https://skia.googlesource.com/skcms) is vendored in `skcms/` because Zig's package fetcher doesn't support `googlesource.com` URLs.
+[skcms](https://skia.googlesource.com/skcms) is vendored in `skcms/upstream/` via git subtree because Zig's package fetcher doesn't support `googlesource.com` URLs.
 
 To update skcms:
 ```bash
-git subtree pull --prefix=skcms https://skia.googlesource.com/skcms <new-commit> --squash
+git subtree pull --prefix=skcms/upstream https://skia.googlesource.com/skcms main --squash
 ```
 
 ## Upstream References
@@ -120,9 +120,9 @@ This repository includes three vendored sub-packages with their own `build.zig`:
 
 | Package | Location | Description |
 |---------|----------|-------------|
-| Brotli | `brotli/` | Compression library |
-| Highway | `highway/` | SIMD library |
-| skcms | `skcms/` | Color management |
+| Brotli | `brotli/` | Compression library (sources fetched from upstream) |
+| Highway | `highway/` | SIMD library (sources fetched from upstream) |
+| skcms | `skcms/` | Color management (sources in `skcms/upstream/` via git subtree) |
 
 Each can be built independently for testing:
 
