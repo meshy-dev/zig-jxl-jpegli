@@ -1,0 +1,53 @@
+.{
+    .name = .jxl_jpegli,
+    .version = "0.12.0",
+    .minimum_zig_version = "0.15.0",
+    .fingerprint = 0xd0165a98b60b126b,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "jconfig.h",
+        "jxl_version.h",
+        "jxl_export.h",
+        "jxl_threads_export.h",
+        "jxl_cms_export.h",
+        "README.md",
+        "LICENSE.md",
+        // Vendored sub-packages
+        "brotli",
+        "highway",
+        "skcms",
+    },
+    .dependencies = .{
+        // Main libjxl upstream (includes jpegli)
+        .libjxl = .{
+            .url = "git+https://github.com/libjxl/libjxl.git#53042ec537712e0df08709524f4df097d42174bc",
+            .hash = "N-V-__8AAEkGcQACudv_kgfzQCzk7_qRl00rNBBBqDzJrwMq",
+        },
+        // Brotli compression library
+        .brotli_upstream = .{
+            .url = "git+https://github.com/google/brotli.git#ed738e842d2fbdf2d6459e39267a633c4a9b2f5d",
+            .hash = "N-V-__8AAIgn4APR8Smd_123K4liHh5-u1Vsg83sw_j1xS4Q",
+        },
+        // Highway SIMD library
+        .highway = .{
+            .url = "git+https://github.com/google/highway.git#457c891775a7397bdb0376bb1031e6e027af1c48",
+            .hash = "N-V-__8AAODLaQBqNvEIfh_2K_DEv5Ivn1EgOsrbhetLQpvS",
+        },
+        // libjpeg-turbo headers (for jpegli libjpeg compatibility)
+        .libjpeg_turbo = .{
+            .url = "git+https://github.com/libjpeg-turbo/libjpeg-turbo.git#8ecba3647edb6dd940463fedf38ca33a8e2a73d1",
+            .hash = "N-V-__8AAFSUgADpLNS5Jc5gFiYjpPaIw5yO7iJy-x1cErJf",
+        },
+        // Optional: libspng for CLI tools (PNG support)
+        .libspng = .{
+            .url = "git+https://github.com/meshy-dev/zig-libspng#f2236ad715534ec736ddaac21509c7b952ffce6e",
+            .hash = "spng-0.7.4-1g5t2AcUAAAQs-hP4cuAzT1Ha-D8lI6ilxFA-xFSjq_g",
+        },
+        // Optional: libwebp for CLI tools (WebP support)
+        .libwebp = .{
+            .url = "git+https://github.com/meshy-dev/zig-libwebp#edc0ccd35203441a6e1aeaffca4686c82e0d7470",
+            .hash = "libwebp-1.6.0-N1FlRAs4AADrkRD6p78RXVFgf7KaIP6CQOhMggBUnVjx",
+        },
+    },
+}

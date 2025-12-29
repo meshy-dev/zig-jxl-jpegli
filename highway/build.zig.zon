@@ -1,0 +1,16 @@
+.{
+    .name = .highway,
+    .version = "1.2.0",
+    .minimum_zig_version = "0.15.0",
+    .fingerprint = 0xdbcf1a74b852a01c,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .highway = .{
+            .url = "git+https://github.com/google/highway.git#457c891775a7397bdb0376bb1031e6e027af1c48",
+            .hash = "N-V-__8AAODLaQBqNvEIfh_2K_DEv5Ivn1EgOsrbhetLQpvS",
+        },
+    },
+}
