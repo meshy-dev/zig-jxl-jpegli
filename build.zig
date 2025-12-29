@@ -14,6 +14,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Build options
+    const strip_cli = b.option(bool, "strip", "Strip debug symbols from CLI binaries (default: true for release builds)") orelse (optimize != .Debug);
+
+    // Check if we can use x86-64-v3 baseline (AVX2+) to reduce binary size
+    const use_avx2_baseline = b.option(bool, "avx2-baseline", "Use AVX2 as minimum SIMD baseline, disabling SSE2/SSE3/SSE4 codepaths (reduces binary size)") orelse detectAvx2Baseline(target);
+
     // Get upstream libjxl source
     const libjxl = b.dependency("libjxl", .{});
     const libjpeg_turbo = b.dependency("libjpeg_turbo", .{});
@@ -22,14 +28,14 @@ pub fn build(b: *std.Build) void {
 
     // Build vendored sub-packages
     const brotli = buildBrotli(b, target, optimize);
-    const hwy = buildHighway(b, target, optimize);
+    const hwy = buildHighway(b, target, optimize, use_avx2_baseline);
     const skcms = buildSkcms(b, target, optimize);
 
     // ============== jxl_cms (internal) ==============
-    const jxl_cms = buildJxlCms(b, target, optimize, libjxl, hwy, skcms);
+    const jxl_cms = buildJxlCms(b, target, optimize, libjxl, hwy, skcms, use_avx2_baseline);
 
     // ============== libjxl (public) ==============
-    const jxl = buildJxl(b, target, optimize, libjxl, hwy, brotli, jxl_cms);
+    const jxl = buildJxl(b, target, optimize, libjxl, hwy, brotli, jxl_cms, use_avx2_baseline);
     b.installArtifact(jxl);
 
     // ============== libjxl_threads (public) ==============
@@ -37,31 +43,42 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(jxl_threads);
 
     // ============== libjpegli (public) ==============
-    const jpegli = buildJpegli(b, target, optimize, libjxl, libjpeg_turbo, hwy);
+    const jpegli = buildJpegli(b, target, optimize, libjxl, libjpeg_turbo, hwy, use_avx2_baseline);
     b.installArtifact(jpegli);
 
     // ============== CLI tools (optional) ==============
     // jxl_extras library (internal, for CLI tools)
-    const jxl_extras = buildJxlExtras(b, target, optimize, libjxl, libjpeg_turbo, hwy, jxl, jxl_threads, jpegli, skcms);
+    const jxl_extras = buildJxlExtras(b, target, optimize, libjxl, libjpeg_turbo, hwy, jxl, jxl_threads, jpegli, skcms, use_avx2_baseline);
 
     // jxl_tool library (internal, for CLI tools)
-    const jxl_tool = buildJxlTool(b, target, optimize, libjxl, hwy);
+    const jxl_tool = buildJxlTool(b, target, optimize, libjxl, hwy, use_avx2_baseline);
 
     // cjxl - JXL encoder
-    const cjxl = buildCjxl(b, target, optimize, libjxl, jxl, jxl_threads, jxl_extras, jxl_tool, hwy, brotli, jxl_cms, skcms);
+    const cjxl = buildCjxl(b, target, optimize, libjxl, jxl, jxl_threads, jxl_extras, jxl_tool, hwy, brotli, jxl_cms, skcms, use_avx2_baseline, strip_cli);
     b.installArtifact(cjxl);
 
     // djxl - JXL decoder
-    const djxl = buildDjxl(b, target, optimize, libjxl, jxl, jxl_threads, jxl_extras, jxl_tool, hwy, brotli, jxl_cms, skcms);
+    const djxl = buildDjxl(b, target, optimize, libjxl, jxl, jxl_threads, jxl_extras, jxl_tool, hwy, brotli, jxl_cms, skcms, use_avx2_baseline, strip_cli);
     b.installArtifact(djxl);
 
     // cjpegli - JPEG encoder (via jpegli)
-    const cjpegli_exe = buildCjpegli(b, target, optimize, libjxl, libjpeg_turbo, jxl_extras, jxl_tool, jpegli, hwy);
+    const cjpegli_exe = buildCjpegli(b, target, optimize, libjxl, libjpeg_turbo, jxl_extras, jxl_tool, jpegli, hwy, use_avx2_baseline, strip_cli);
     b.installArtifact(cjpegli_exe);
 
     // djpegli - JPEG decoder (via jpegli)
-    const djpegli_exe = buildDjpegli(b, target, optimize, libjxl, libjpeg_turbo, jxl_extras, jxl_tool, jpegli, hwy);
+    const djpegli_exe = buildDjpegli(b, target, optimize, libjxl, libjpeg_turbo, jxl_extras, jxl_tool, jpegli, hwy, use_avx2_baseline, strip_cli);
     b.installArtifact(djpegli_exe);
+}
+
+/// Detect if target CPU supports AVX2 baseline (x86-64-v3 or higher)
+fn detectAvx2Baseline(target: std.Build.ResolvedTarget) bool {
+    const arch = target.result.cpu.arch;
+    if (arch != .x86_64) return false;
+
+    // Check if the target CPU model supports AVX2
+    const cpu_model = target.result.cpu.model;
+    // x86-64-v3 baseline includes: AVX, AVX2, BMI1, BMI2, F16C, FMA, LZCNT, MOVBE, XSAVE
+    return cpu_model.features.isEnabled(@intFromEnum(std.Target.x86.Feature.avx2));
 }
 
 fn buildBrotli(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
@@ -97,7 +114,7 @@ fn buildBrotli(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     return brotli;
 }
 
-fn buildHighway(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn buildHighway(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, use_avx2_baseline: bool) *std.Build.Step.Compile {
     const highway_upstream = b.dependency("highway", .{});
 
     const hwy_mod = b.createModule(.{
@@ -113,6 +130,12 @@ fn buildHighway(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
         .flags = cxx_flags,
     });
     hwy_mod.addCMacro("HWY_STATIC_DEFINE", "1");
+
+    // If AVX2 baseline, disable SSE2/SSSE3/SSE4 codepaths to reduce binary size
+    // HWY_SSE2 = (1<<14), HWY_SSSE3 = (1<<12), HWY_SSE4 = (1<<11)
+    if (use_avx2_baseline) {
+        hwy_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     const hwy = b.addLibrary(.{
         .name = "hwy",
@@ -166,6 +189,7 @@ fn buildJxlCms(
     libjxl: *std.Build.Dependency,
     hwy: *std.Build.Step.Compile,
     skcms: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
     const jxl_cms_mod = b.createModule(.{
         .target = target,
@@ -189,6 +213,9 @@ fn buildJxlCms(
     jxl_cms_mod.addCMacro("HWY_STATIC_DEFINE", "1");
     jxl_cms_mod.addCMacro("JPEGXL_ENABLE_SKCMS", "1");
     jxl_cms_mod.addCMacro("JXL_STATIC_DEFINE", "1");
+    if (use_avx2_baseline) {
+        jxl_cms_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     jxl_cms_mod.addCSourceFiles(.{
         .root = libjxl.path("lib"),
@@ -213,6 +240,7 @@ fn buildJxl(
     hwy: *std.Build.Step.Compile,
     brotli: *std.Build.Step.Compile,
     jxl_cms: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
     const jxl_mod = b.createModule(.{
         .target = target,
@@ -240,6 +268,9 @@ fn buildJxl(
     jxl_mod.addCMacro("JXL_INTERNAL_LIBRARY_BUILD", "1");
     jxl_mod.addCMacro("JPEGXL_ENABLE_TRANSCODE_JPEG", "0");
     jxl_mod.addCMacro("JPEGXL_ENABLE_BOXES", "0");
+    if (use_avx2_baseline) {
+        jxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     // Add decoder sources
     jxl_mod.addCSourceFiles(.{
@@ -323,6 +354,7 @@ fn buildJpegli(
     libjxl: *std.Build.Dependency,
     libjpeg_turbo: *std.Build.Dependency,
     hwy: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
     const jpegli_mod = b.createModule(.{
         .target = target,
@@ -342,6 +374,9 @@ fn buildJpegli(
 
     // Compile flags and macros
     jpegli_mod.addCMacro("HWY_STATIC_DEFINE", "1");
+    if (use_avx2_baseline) {
+        jpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     jpegli_mod.addCSourceFiles(.{
         .root = libjxl.path("lib"),
@@ -375,6 +410,7 @@ fn buildJxlExtras(
     jxl_threads: *std.Build.Step.Compile,
     jpegli: *std.Build.Step.Compile,
     skcms: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
     const jxl_extras_mod = b.createModule(.{
         .target = target,
@@ -409,6 +445,9 @@ fn buildJxlExtras(
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
+    if (use_avx2_baseline) {
+        jxl_extras_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     // Core extras sources
     jxl_extras_mod.addCSourceFiles(.{
@@ -481,6 +520,7 @@ fn buildJxlTool(
     optimize: std.builtin.OptimizeMode,
     libjxl: *std.Build.Dependency,
     hwy: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
     const jxl_tool_mod = b.createModule(.{
         .target = target,
@@ -502,6 +542,9 @@ fn buildJxlTool(
     jxl_tool_mod.addCMacro("HWY_STATIC_DEFINE", "1");
     jxl_tool_mod.addCMacro("JXL_STATIC_DEFINE", "1");
     jxl_tool_mod.addCMacro("JPEGXL_VERSION", "\"0.12.0\"");
+    if (use_avx2_baseline) {
+        jxl_tool_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     jxl_tool_mod.addCSourceFiles(.{
         .root = libjxl.path("tools"),
@@ -531,12 +574,15 @@ fn buildCjxl(
     brotli: *std.Build.Step.Compile,
     jxl_cms: *std.Build.Step.Compile,
     skcms: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
+    strip: bool,
 ) *std.Build.Step.Compile {
     const cjxl_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
+        .strip = strip,
     });
 
     cjxl_mod.addIncludePath(libjxl.path(""));
@@ -562,6 +608,9 @@ fn buildCjxl(
     cjxl_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     cjxl_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     cjxl_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
+    if (use_avx2_baseline) {
+        cjxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     cjxl_mod.addCSourceFiles(.{
         .root = libjxl.path("tools"),
@@ -590,12 +639,15 @@ fn buildDjxl(
     brotli: *std.Build.Step.Compile,
     jxl_cms: *std.Build.Step.Compile,
     skcms: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
+    strip: bool,
 ) *std.Build.Step.Compile {
     const djxl_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
+        .strip = strip,
     });
 
     djxl_mod.addIncludePath(libjxl.path(""));
@@ -621,6 +673,9 @@ fn buildDjxl(
     djxl_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     djxl_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     djxl_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
+    if (use_avx2_baseline) {
+        djxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     djxl_mod.addCSourceFiles(.{
         .root = libjxl.path("tools"),
@@ -646,12 +701,15 @@ fn buildCjpegli(
     jxl_tool: *std.Build.Step.Compile,
     jpegli: *std.Build.Step.Compile,
     hwy: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
+    strip: bool,
 ) *std.Build.Step.Compile {
     const cjpegli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
+        .strip = strip,
     });
 
     cjpegli_mod.addIncludePath(libjxl.path(""));
@@ -671,6 +729,9 @@ fn buildCjpegli(
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
+    if (use_avx2_baseline) {
+        cjpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     cjpegli_mod.addCSourceFiles(.{
         .root = libjxl.path("tools"),
@@ -696,12 +757,15 @@ fn buildDjpegli(
     jxl_tool: *std.Build.Step.Compile,
     jpegli: *std.Build.Step.Compile,
     hwy: *std.Build.Step.Compile,
+    use_avx2_baseline: bool,
+    strip: bool,
 ) *std.Build.Step.Compile {
     const djpegli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
+        .strip = strip,
     });
 
     djpegli_mod.addIncludePath(libjxl.path(""));
@@ -721,6 +785,9 @@ fn buildDjpegli(
     djpegli_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     djpegli_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     djpegli_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
+    if (use_avx2_baseline) {
+        djpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    }
 
     djpegli_mod.addCSourceFiles(.{
         .root = libjxl.path("tools"),
