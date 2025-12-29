@@ -130,13 +130,13 @@ fn buildSkcms(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
         .link_libcpp = true,
     });
 
-    // Add include path for skcms headers (vendored locally)
-    skcms_mod.addIncludePath(b.path("skcms"));
-    skcms_mod.addIncludePath(b.path("skcms/src"));
+    // Add include path for skcms headers (vendored via git subtree)
+    skcms_mod.addIncludePath(b.path("skcms/upstream"));
+    skcms_mod.addIncludePath(b.path("skcms/upstream/src"));
 
-    // Add base sources
+    // Add base sources from upstream subtree
     skcms_mod.addCSourceFiles(.{
-        .root = b.path("skcms"),
+        .root = b.path("skcms/upstream"),
         .files = skcms_base_sources,
         .flags = cxx_flags,
     });
@@ -145,7 +145,7 @@ fn buildSkcms(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     const arch = target.result.cpu.arch;
     if (arch == .x86_64) {
         skcms_mod.addCSourceFiles(.{
-            .root = b.path("skcms"),
+            .root = b.path("skcms/upstream"),
             .files = skcms_simd_sources,
             .flags = cxx_flags,
         });
@@ -179,7 +179,7 @@ fn buildJxlCms(
     jxl_cms_mod.addIncludePath(libjxl.path("lib"));
     jxl_cms_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_cms_mod.addIncludePath(b.path("")); // For generated headers
-    jxl_cms_mod.addIncludePath(b.path("skcms"));
+    jxl_cms_mod.addIncludePath(b.path("skcms/upstream"));
 
     // Add highway include from artifact
     jxl_cms_mod.linkLibrary(hwy);
@@ -226,7 +226,7 @@ fn buildJxl(
     jxl_mod.addIncludePath(libjxl.path("lib"));
     jxl_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_mod.addIncludePath(b.path("")); // For generated headers
-    jxl_mod.addIncludePath(b.path("skcms"));
+    jxl_mod.addIncludePath(b.path("skcms/upstream"));
 
     // Link dependencies
     jxl_mod.linkLibrary(hwy);
@@ -389,7 +389,7 @@ fn buildJxlExtras(
     jxl_extras_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_extras_mod.addIncludePath(libjpeg_turbo.path(""));
     jxl_extras_mod.addIncludePath(b.path("")); // For generated headers
-    jxl_extras_mod.addIncludePath(b.path("skcms"));
+    jxl_extras_mod.addIncludePath(b.path("skcms/upstream"));
 
     // Link dependencies
     jxl_extras_mod.linkLibrary(hwy);
@@ -543,7 +543,7 @@ fn buildCjxl(
     cjxl_mod.addIncludePath(libjxl.path("lib"));
     cjxl_mod.addIncludePath(libjxl.path("lib/include"));
     cjxl_mod.addIncludePath(b.path(""));
-    cjxl_mod.addIncludePath(b.path("skcms"));
+    cjxl_mod.addIncludePath(b.path("skcms/upstream"));
 
     cjxl_mod.linkLibrary(jxl);
     cjxl_mod.linkLibrary(jxl_threads);
@@ -602,7 +602,7 @@ fn buildDjxl(
     djxl_mod.addIncludePath(libjxl.path("lib"));
     djxl_mod.addIncludePath(libjxl.path("lib/include"));
     djxl_mod.addIncludePath(b.path(""));
-    djxl_mod.addIncludePath(b.path("skcms"));
+    djxl_mod.addIncludePath(b.path("skcms/upstream"));
 
     djxl_mod.linkLibrary(jxl);
     djxl_mod.linkLibrary(jxl_threads);

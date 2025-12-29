@@ -3,8 +3,8 @@
 //! Based on upstream Bazel/CMake build system.
 //! Source: https://skia.googlesource.com/skcms
 //!
-//! Note: skcms is vendored directly because Zig's package fetcher
-//! doesn't support googlesource.com URLs.
+//! Note: skcms upstream is vendored via git subtree in upstream/
+//! because Zig's package fetcher doesn't support googlesource.com URLs.
 
 const std = @import("std");
 
@@ -19,17 +19,17 @@ pub fn build(b: *std.Build) void {
         .link_libcpp = true,
     });
 
-    // Add include path for skcms headers
-    skcms_mod.addIncludePath(b.path(""));
-    skcms_mod.addIncludePath(b.path("src"));
+    // Add include path for skcms headers (from upstream subtree)
+    skcms_mod.addIncludePath(b.path("upstream"));
+    skcms_mod.addIncludePath(b.path("upstream/src"));
 
     // Check for SIMD support based on target architecture
     const arch = target.result.cpu.arch;
     const is_x86_64 = arch == .x86_64;
 
-    // Add base sources
+    // Add base sources from upstream subtree
     skcms_mod.addCSourceFiles(.{
-        .root = b.path(""),
+        .root = b.path("upstream"),
         .files = base_sources,
         .flags = cxx_flags,
     });
@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
     // Add SIMD sources for x86_64 (skcms has internal runtime dispatch)
     if (is_x86_64) {
         skcms_mod.addCSourceFiles(.{
-            .root = b.path(""),
+            .root = b.path("upstream"),
             .files = simd_sources,
             .flags = cxx_flags,
         });
@@ -49,8 +49,8 @@ pub fn build(b: *std.Build) void {
         .root_module = skcms_mod,
     });
 
-    // Install skcms header
-    skcms.installHeader(b.path("skcms.h"), "skcms.h");
+    // Install skcms header from upstream subtree
+    skcms.installHeader(b.path("upstream/skcms.h"), "skcms.h");
 
     b.installArtifact(skcms);
 }
