@@ -191,6 +191,8 @@ fn buildJxlCms(
     skcms: *std.Build.Step.Compile,
     use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const jxl_cms_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -204,6 +206,7 @@ fn buildJxlCms(
     jxl_cms_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_cms_mod.addIncludePath(b.path("")); // For generated headers
     jxl_cms_mod.addIncludePath(b.path("skcms/upstream"));
+    jxl_cms_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     // Add highway include from artifact
     jxl_cms_mod.linkLibrary(hwy);
@@ -242,6 +245,9 @@ fn buildJxl(
     jxl_cms: *std.Build.Step.Compile,
     use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+    const brotli_upstream = b.dependency("brotli_upstream", .{});
+
     const jxl_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -255,6 +261,8 @@ fn buildJxl(
     jxl_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_mod.addIncludePath(b.path("")); // For generated headers
     jxl_mod.addIncludePath(b.path("skcms/upstream"));
+    jxl_mod.addIncludePath(highway_upstream.path("")); // Highway headers
+    jxl_mod.addIncludePath(brotli_upstream.path("c/include")); // Brotli headers
 
     // Link dependencies
     jxl_mod.linkLibrary(hwy);
@@ -293,8 +301,8 @@ fn buildJxl(
     });
 
     // Install public headers
-    jxl.installHeader(b.path("jxl_version.h"), "jxl/version.h");
-    jxl.installHeader(b.path("jxl_export.h"), "jxl/jxl_export.h");
+    jxl.installHeader(b.path("jxl/version.h"), "jxl/version.h");
+    jxl.installHeader(b.path("jxl/jxl_export.h"), "jxl/jxl_export.h");
     jxl.installHeadersDirectory(libjxl.path("lib/include/jxl"), "jxl", .{
         .include_extensions = &.{".h"},
         .exclude_extensions = &.{"_cxx.h"}, // Exclude C++ wrapper headers for now
@@ -340,7 +348,7 @@ fn buildJxlThreads(
     });
 
     // Install public headers
-    jxl_threads.installHeader(b.path("jxl_threads_export.h"), "jxl/jxl_threads_export.h");
+    jxl_threads.installHeader(b.path("jxl/jxl_threads_export.h"), "jxl/jxl_threads_export.h");
     jxl_threads.installHeader(libjxl.path("lib/include/jxl/thread_parallel_runner.h"), "jxl/thread_parallel_runner.h");
     jxl_threads.installHeader(libjxl.path("lib/include/jxl/resizable_parallel_runner.h"), "jxl/resizable_parallel_runner.h");
 
@@ -356,6 +364,8 @@ fn buildJpegli(
     hwy: *std.Build.Step.Compile,
     use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const jpegli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -366,8 +376,10 @@ fn buildJpegli(
     // Include paths - libjxl uses "lib/..." includes so we need the repo root
     jpegli_mod.addIncludePath(libjxl.path("")); // Repo root for "lib/..." includes
     jpegli_mod.addIncludePath(libjxl.path("lib"));
+    jpegli_mod.addIncludePath(libjxl.path("lib/include")); // For jxl/types.h
     jpegli_mod.addIncludePath(libjpeg_turbo.path(""));
     jpegli_mod.addIncludePath(b.path("")); // For jconfig.h
+    jpegli_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     // Link highway
     jpegli_mod.linkLibrary(hwy);
@@ -412,6 +424,8 @@ fn buildJxlExtras(
     skcms: *std.Build.Step.Compile,
     use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const jxl_extras_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -426,6 +440,7 @@ fn buildJxlExtras(
     jxl_extras_mod.addIncludePath(libjpeg_turbo.path(""));
     jxl_extras_mod.addIncludePath(b.path("")); // For generated headers
     jxl_extras_mod.addIncludePath(b.path("skcms/upstream"));
+    jxl_extras_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     // Link dependencies
     jxl_extras_mod.linkLibrary(hwy);
@@ -522,6 +537,8 @@ fn buildJxlTool(
     hwy: *std.Build.Step.Compile,
     use_avx2_baseline: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const jxl_tool_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -534,6 +551,7 @@ fn buildJxlTool(
     jxl_tool_mod.addIncludePath(libjxl.path("lib"));
     jxl_tool_mod.addIncludePath(libjxl.path("lib/include"));
     jxl_tool_mod.addIncludePath(b.path("")); // For generated headers
+    jxl_tool_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     // Link dependencies
     jxl_tool_mod.linkLibrary(hwy);
@@ -577,6 +595,8 @@ fn buildCjxl(
     use_avx2_baseline: bool,
     strip: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const cjxl_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -590,6 +610,7 @@ fn buildCjxl(
     cjxl_mod.addIncludePath(libjxl.path("lib/include"));
     cjxl_mod.addIncludePath(b.path(""));
     cjxl_mod.addIncludePath(b.path("skcms/upstream"));
+    cjxl_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     cjxl_mod.linkLibrary(jxl);
     cjxl_mod.linkLibrary(jxl_threads);
@@ -642,6 +663,8 @@ fn buildDjxl(
     use_avx2_baseline: bool,
     strip: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const djxl_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -655,6 +678,7 @@ fn buildDjxl(
     djxl_mod.addIncludePath(libjxl.path("lib/include"));
     djxl_mod.addIncludePath(b.path(""));
     djxl_mod.addIncludePath(b.path("skcms/upstream"));
+    djxl_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     djxl_mod.linkLibrary(jxl);
     djxl_mod.linkLibrary(jxl_threads);
@@ -704,6 +728,8 @@ fn buildCjpegli(
     use_avx2_baseline: bool,
     strip: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const cjpegli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -717,6 +743,7 @@ fn buildCjpegli(
     cjpegli_mod.addIncludePath(libjxl.path("lib/include"));
     cjpegli_mod.addIncludePath(libjpeg_turbo.path(""));
     cjpegli_mod.addIncludePath(b.path(""));
+    cjpegli_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     cjpegli_mod.linkLibrary(jxl_extras);
     cjpegli_mod.linkLibrary(jxl_tool);
@@ -760,6 +787,8 @@ fn buildDjpegli(
     use_avx2_baseline: bool,
     strip: bool,
 ) *std.Build.Step.Compile {
+    const highway_upstream = b.dependency("highway", .{});
+
     const djpegli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -773,6 +802,7 @@ fn buildDjpegli(
     djpegli_mod.addIncludePath(libjxl.path("lib/include"));
     djpegli_mod.addIncludePath(libjpeg_turbo.path(""));
     djpegli_mod.addIncludePath(b.path(""));
+    djpegli_mod.addIncludePath(highway_upstream.path("")); // Highway headers
 
     djpegli_mod.linkLibrary(jxl_extras);
     djpegli_mod.linkLibrary(jxl_tool);

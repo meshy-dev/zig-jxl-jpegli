@@ -7,10 +7,7 @@
         "build.zig",
         "build.zig.zon",
         "jconfig.h",
-        "jxl_version.h",
-        "jxl_export.h",
-        "jxl_threads_export.h",
-        "jxl_cms_export.h",
+        "jxl", // Generated headers (version.h, jxl_export.h, jxl_threads_export.h, jxl_cms_export.h)
         "README.md",
         "LICENSE.md",
         // Vendored sub-packages
