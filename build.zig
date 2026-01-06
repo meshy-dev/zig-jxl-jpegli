@@ -81,6 +81,41 @@ fn detectAvx2Baseline(target: std.Build.ResolvedTarget) bool {
     return cpu_model.features.isEnabled(@intFromEnum(std.Target.x86.Feature.avx2));
 }
 
+/// Check if target CPU supports AVX512F
+fn targetHasAvx512(target: std.Build.ResolvedTarget) bool {
+    if (target.result.cpu.arch != .x86_64) return false;
+    return target.result.cpu.model.features.isEnabled(@intFromEnum(std.Target.x86.Feature.avx512f));
+}
+
+/// Get HWY_DISABLED_TARGETS macro value based on target CPU capabilities
+fn getHwyDisabledTargets(target: std.Build.ResolvedTarget, use_avx2_baseline: bool) ?[]const u8 {
+    // Highway target constants (from hwy/highway.h):
+    // HWY_AVX3_SPR = (1LL << 4)  - AVX512 with FP16
+    // HWY_AVX3_ZEN4 = (1LL << 5) - AVX512 for Zen4
+    // HWY_AVX3_DL = (1LL << 6)   - AVX512 with VNNI/BF16
+    // HWY_AVX3 = (1LL << 7)      - AVX512 F/BW/CD/DQ/VL
+    // HWY_SSE4 = (1LL << 11)
+    // HWY_SSSE3 = (1LL << 12)
+    // HWY_SSE2 = (1LL << 14)
+
+    const has_avx512 = targetHasAvx512(target);
+    const avx512_targets = "(HWY_AVX3_SPR | HWY_AVX3_ZEN4 | HWY_AVX3_DL | HWY_AVX3)";
+    const sse_targets = "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)";
+
+    if (use_avx2_baseline and !has_avx512) {
+        // x86-64-v3: disable both SSE (below baseline) and AVX512 (not supported)
+        return "(" ++ sse_targets ++ " | " ++ avx512_targets ++ ")";
+    } else if (use_avx2_baseline) {
+        // x86-64-v4 or higher: only disable SSE (below baseline)
+        return sse_targets;
+    } else if (!has_avx512) {
+        // Generic x86-64 without AVX512: disable AVX512 targets
+        return avx512_targets;
+    }
+    // Full AVX512 support, no targets need to be disabled
+    return null;
+}
+
 fn buildBrotli(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
     const brotli_upstream = b.dependency("brotli_upstream", .{});
 
@@ -131,10 +166,9 @@ fn buildHighway(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     });
     hwy_mod.addCMacro("HWY_STATIC_DEFINE", "1");
 
-    // If AVX2 baseline, disable SSE2/SSSE3/SSE4 codepaths to reduce binary size
-    // HWY_SSE2 = (1<<14), HWY_SSSE3 = (1<<12), HWY_SSE4 = (1<<11)
-    if (use_avx2_baseline) {
-        hwy_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    // Configure disabled SIMD targets based on CPU capabilities
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        hwy_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     const hwy = b.addLibrary(.{
@@ -165,13 +199,25 @@ fn buildSkcms(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     });
 
     // Add SIMD sources for x86_64
-    const arch = target.result.cpu.arch;
-    if (arch == .x86_64) {
+    if (target.result.cpu.arch == .x86_64) {
+        // AVX2/Haswell sources (always included for x86_64)
         skcms_mod.addCSourceFiles(.{
             .root = b.path("skcms/upstream"),
-            .files = skcms_simd_sources,
+            .files = skcms_avx2_sources,
             .flags = cxx_flags,
         });
+
+        // AVX512/Skylake-X sources (only when target supports AVX512)
+        if (targetHasAvx512(target)) {
+            skcms_mod.addCSourceFiles(.{
+                .root = b.path("skcms/upstream"),
+                .files = skcms_avx512_sources,
+                .flags = cxx_flags,
+            });
+        } else {
+            // Disable SKX code path in skcms when AVX512 is not available
+            skcms_mod.addCMacro("SKCMS_DISABLE_SKX", "1");
+        }
     }
 
     const skcms = b.addLibrary(.{
@@ -216,8 +262,8 @@ fn buildJxlCms(
     jxl_cms_mod.addCMacro("HWY_STATIC_DEFINE", "1");
     jxl_cms_mod.addCMacro("JPEGXL_ENABLE_SKCMS", "1");
     jxl_cms_mod.addCMacro("JXL_STATIC_DEFINE", "1");
-    if (use_avx2_baseline) {
-        jxl_cms_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        jxl_cms_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     jxl_cms_mod.addCSourceFiles(.{
@@ -276,8 +322,12 @@ fn buildJxl(
     jxl_mod.addCMacro("JXL_INTERNAL_LIBRARY_BUILD", "1");
     jxl_mod.addCMacro("JPEGXL_ENABLE_TRANSCODE_JPEG", "0");
     jxl_mod.addCMacro("JPEGXL_ENABLE_BOXES", "0");
-    if (use_avx2_baseline) {
-        jxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        jxl_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
+    }
+    // Disable AVX512 in fast lossless encoder when target doesn't support it
+    if (!targetHasAvx512(target)) {
+        jxl_mod.addCMacro("FJXL_ENABLE_AVX512", "0");
     }
 
     // Add decoder sources
@@ -386,8 +436,8 @@ fn buildJpegli(
 
     // Compile flags and macros
     jpegli_mod.addCMacro("HWY_STATIC_DEFINE", "1");
-    if (use_avx2_baseline) {
-        jpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        jpegli_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     jpegli_mod.addCSourceFiles(.{
@@ -460,8 +510,8 @@ fn buildJxlExtras(
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     jxl_extras_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
-    if (use_avx2_baseline) {
-        jxl_extras_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        jxl_extras_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     // Core extras sources
@@ -560,8 +610,8 @@ fn buildJxlTool(
     jxl_tool_mod.addCMacro("HWY_STATIC_DEFINE", "1");
     jxl_tool_mod.addCMacro("JXL_STATIC_DEFINE", "1");
     jxl_tool_mod.addCMacro("JPEGXL_VERSION", "\"0.12.0\"");
-    if (use_avx2_baseline) {
-        jxl_tool_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        jxl_tool_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     jxl_tool_mod.addCSourceFiles(.{
@@ -629,8 +679,8 @@ fn buildCjxl(
     cjxl_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     cjxl_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     cjxl_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
-    if (use_avx2_baseline) {
-        cjxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        cjxl_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     cjxl_mod.addCSourceFiles(.{
@@ -697,8 +747,8 @@ fn buildDjxl(
     djxl_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     djxl_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     djxl_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
-    if (use_avx2_baseline) {
-        djxl_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        djxl_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     djxl_mod.addCSourceFiles(.{
@@ -756,8 +806,8 @@ fn buildCjpegli(
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     cjpegli_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
-    if (use_avx2_baseline) {
-        cjpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        cjpegli_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     cjpegli_mod.addCSourceFiles(.{
@@ -815,8 +865,8 @@ fn buildDjpegli(
     djpegli_mod.addCMacro("JPEGXL_ENABLE_GIF", "0");
     djpegli_mod.addCMacro("JPEGXL_ENABLE_JPEG", "0");
     djpegli_mod.addCMacro("JPEGXL_ENABLE_EXR", "0");
-    if (use_avx2_baseline) {
-        djpegli_mod.addCMacro("HWY_DISABLED_TARGETS", "(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4)");
+    if (getHwyDisabledTargets(target, use_avx2_baseline)) |disabled| {
+        djpegli_mod.addCMacro("HWY_DISABLED_TARGETS", disabled);
     }
 
     djpegli_mod.addCSourceFiles(.{
@@ -1098,9 +1148,13 @@ const skcms_base_sources: []const []const u8 = &.{
     "src/skcms_TransformBaseline.cc",
 };
 
-// skcms SIMD sources (x86_64 only)
-const skcms_simd_sources: []const []const u8 = &.{
+// skcms AVX2/Haswell sources (x86_64)
+const skcms_avx2_sources: []const []const u8 = &.{
     "src/skcms_TransformHsw.cc",
+};
+
+// skcms AVX512/Skylake-X sources (x86_64 with AVX512 only)
+const skcms_avx512_sources: []const []const u8 = &.{
     "src/skcms_TransformSkx.cc",
 };
 
