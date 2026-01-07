@@ -1,14 +1,18 @@
 //! Zig build for Google's Highway SIMD library
 //!
+//! Highway provides portable SIMD with runtime dispatch. The library automatically
+//! detects CPU capabilities and uses the best available instruction set.
+//!
 //! Based on upstream CMake build system.
-//! Source: https://github.com/google/highway/blob/master/CMakeLists.txt#L356-L367
+//! Source: https://github.com/google/highway/blob/master/CMakeLists.txt
 
 const std = @import("std");
+const Build = std.Build;
+const Dependency = Build.Dependency;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-
     const upstream = b.dependency("highway", .{});
 
     const hwy_mod = b.createModule(.{
@@ -17,11 +21,12 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
         .link_libcpp = true,
     });
+
     hwy_mod.addIncludePath(upstream.path(""));
     hwy_mod.addCSourceFiles(.{
         .root = upstream.path(""),
-        .files = hwy_sources,
-        .flags = cxx_flags,
+        .files = &hwy_sources,
+        .flags = &cxx_flags,
     });
     hwy_mod.addCMacro("HWY_STATIC_DEFINE", "1");
 
@@ -31,7 +36,6 @@ pub fn build(b: *std.Build) void {
         .root_module = hwy_mod,
     });
 
-    // Install Highway headers
     hwy.installHeadersDirectory(upstream.path("hwy"), "hwy", .{
         .include_extensions = &.{".h"},
     });
@@ -39,7 +43,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(hwy);
 }
 
-const cxx_flags: []const []const u8 = &.{
+const cxx_flags = [_][]const u8{
     "-std=c++17",
     "-fPIC",
     "-fno-exceptions",
@@ -51,9 +55,7 @@ const cxx_flags: []const []const u8 = &.{
     "-D__TIME__=\"redacted\"",
 };
 
-// Highway SIMD library sources
-// Source: https://github.com/google/highway/blob/master/CMakeLists.txt#L356-L367
-const hwy_sources: []const []const u8 = &.{
+const hwy_sources = [_][]const u8{
     "hwy/abort.cc",
     "hwy/aligned_allocator.cc",
     "hwy/nanobenchmark.cc",

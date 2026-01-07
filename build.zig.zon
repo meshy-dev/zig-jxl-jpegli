@@ -26,10 +26,10 @@
             .url = "git+https://github.com/google/brotli.git#ed738e842d2fbdf2d6459e39267a633c4a9b2f5d",
             .hash = "N-V-__8AAIgn4APR8Smd_123K4liHh5-u1Vsg83sw_j1xS4Q",
         },
-        // Highway SIMD library
+        // Highway SIMD library (1.2.0+, includes evex512 fix for Clang 18+)
         .highway = .{
-            .url = "git+https://github.com/google/highway.git#457c891775a7397bdb0376bb1031e6e027af1c48",
-            .hash = "N-V-__8AAODLaQBqNvEIfh_2K_DEv5Ivn1EgOsrbhetLQpvS",
+            .url = "git+https://github.com/google/highway.git#ade5215e6a8ffce502d4ca9df5e99297bd3db7b1",
+            .hash = "N-V-__8AAKDijQB8S5BuDKoxzTS3CiHOw0DhDG-Uz_UB_slv",
         },
         // libjpeg-turbo headers (for jpegli libjpeg compatibility)
         .libjpeg_turbo = .{

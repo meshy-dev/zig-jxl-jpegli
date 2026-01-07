@@ -18,12 +18,23 @@ Zig build system for [libjxl](https://github.com/libjxl/libjxl) (JPEG XL) and [j
 # Debug build
 zig build
 
-# Release build  
+# Release build (optimized, smaller binaries)
 zig build -Doptimize=ReleaseFast
 
-# Cross-compile example
-zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseFast
+# Cross-compile (native CPU or x86_64_v2+ recommended for release builds)
+zig build -Dtarget=aarch64-linux -Doptimize=ReleaseFast
 ```
+
+### Build Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-Doptimize=<mode>` | `Debug`, `ReleaseSafe`, `ReleaseFast` | `Debug` |
+| `-Dstrip=<bool>` | Strip CLI binary symbols | `true` for release |
+| `-Dtarget=<triple>` | Cross-compile target | Native |
+| `-Dcpu=<cpu>` | Target CPU baseline | `baseline` |
+
+**Note:** For ReleaseFast builds, use native compilation or target at least `x86_64_v2` to avoid compiler limitations with SIMD intrinsics on very generic baselines.
 
 ## Output
 
@@ -105,14 +116,15 @@ git subtree pull --prefix=skcms/upstream https://skia.googlesource.com/skcms mai
 
 ## Upstream References
 
-When updating this build, check these upstream CMake files for source list changes:
+When updating this build, check these upstream files for source list changes:
 
-- [lib/jxl_lists.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jxl_lists.cmake) - Source file lists
-- [lib/jxl.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jxl.cmake) - libjxl build
-- [lib/jxl_threads.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jxl_threads.cmake) - Threads
-- [lib/jpegli.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jpegli.cmake) - jpegli build
-- [highway CMakeLists.txt](https://github.com/google/highway/blob/master/CMakeLists.txt#L356-L367) - Highway sources
-- [skcms BUILD.bazel](https://skia.googlesource.com/skcms/+/refs/heads/main/BUILD.bazel) - skcms sources
+- [lib/jxl_lists.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jxl_lists.cmake) - Source file lists (JPEGXL_INTERNAL_*_SOURCES)
+- [lib/jxl.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jxl.cmake) - libjxl build configuration
+- [lib/jpegli.cmake](https://github.com/libjxl/libjxl/blob/main/lib/jpegli.cmake) - jpegli build configuration
+- [Highway CMakeLists.txt](https://github.com/google/highway/blob/master/CMakeLists.txt#L356-L367) - Highway sources
+- [skcms BUILD.bazel](https://skia.googlesource.com/skcms/+/refs/heads/main/BUILD.bazel) - skcms sources and SIMD variants
+
+See [BUILD.md](BUILD.md) for detailed documentation on the build system architecture and maintenance.
 
 ## Vendored Sub-packages
 

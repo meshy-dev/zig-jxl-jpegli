@@ -8,30 +8,27 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-
     const upstream = b.dependency("brotli", .{});
 
-    // Combined brotli library (common + dec + enc)
     const brotli_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
+
     brotli_mod.addIncludePath(upstream.path("c/include"));
     brotli_mod.addCSourceFiles(.{
         .root = upstream.path("c"),
-        .files = common_sources ++ dec_sources ++ enc_sources,
-        .flags = c_flags,
+        .files = &(common_sources ++ dec_sources ++ enc_sources),
+        .flags = &c_flags,
     });
 
     // Platform-specific defines
-    const os_tag = target.result.os.tag;
-    if (os_tag == .linux) {
-        brotli_mod.addCMacro("OS_LINUX", "1");
-    } else if (os_tag == .freebsd) {
-        brotli_mod.addCMacro("OS_FREEBSD", "1");
-    } else if (os_tag == .macos) {
-        brotli_mod.addCMacro("OS_MACOSX", "1");
+    switch (target.result.os.tag) {
+        .linux => brotli_mod.addCMacro("OS_LINUX", "1"),
+        .freebsd => brotli_mod.addCMacro("OS_FREEBSD", "1"),
+        .macos => brotli_mod.addCMacro("OS_MACOSX", "1"),
+        else => {},
     }
 
     const brotli = b.addLibrary(.{
@@ -39,18 +36,17 @@ pub fn build(b: *std.Build) void {
         .linkage = .static,
         .root_module = brotli_mod,
     });
-    brotli.installHeadersDirectory(upstream.path("c/include/brotli"), "brotli", .{});
 
+    brotli.installHeadersDirectory(upstream.path("c/include/brotli"), "brotli", .{});
     b.installArtifact(brotli);
 }
 
-const c_flags: []const []const u8 = &.{
+const c_flags = [_][]const u8{
     "-fPIC",
     "-Wall",
 };
 
-// Common sources
-const common_sources: []const []const u8 = &.{
+const common_sources = [_][]const u8{
     "common/constants.c",
     "common/context.c",
     "common/dictionary.c",
@@ -59,16 +55,14 @@ const common_sources: []const []const u8 = &.{
     "common/transform.c",
 };
 
-// Decoder sources
-const dec_sources: []const []const u8 = &.{
+const dec_sources = [_][]const u8{
     "dec/bit_reader.c",
     "dec/decode.c",
     "dec/huffman.c",
     "dec/state.c",
 };
 
-// Encoder sources
-const enc_sources: []const []const u8 = &.{
+const enc_sources = [_][]const u8{
     "enc/backward_references.c",
     "enc/backward_references_hq.c",
     "enc/bit_cost.c",
@@ -91,3 +85,4 @@ const enc_sources: []const []const u8 = &.{
     "enc/static_dict.c",
     "enc/utf8_util.c",
 };
+
