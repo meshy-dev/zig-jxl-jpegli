@@ -180,8 +180,18 @@ fn getJxlPatchedSources(b: *Build, libjxl: *Dependency) Build.LazyPath {
     sed.addFileArg(libjxl.path("lib/jxl/enc_fast_lossless.cc"));
 
     const wf = b.addWriteFiles();
-    _ = wf.addCopyFile(sed.captureStdOut(), "jxl/enc_fast_lossless.cc");
+    _ = wf.addCopyFile(captureStdOut(sed), "jxl/enc_fast_lossless.cc");
     return wf.getDirectory();
+}
+
+/// Compatibility wrapper for captureStdOut (API changed in Zig 0.16)
+fn captureStdOut(run: *Build.Step.Run) Build.LazyPath {
+    const zig_version = @import("builtin").zig_version;
+    if (zig_version.minor >= 16) {
+        return run.captureStdOut(.{});
+    } else {
+        return run.captureStdOut();
+    }
 }
 
 fn buildSkcms(b: *Build, target: ResolvedTarget, optimize: OptimizeMode) *Compile {
